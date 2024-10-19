@@ -1,0 +1,2 @@
+Functions:
+-Basic clock with current time (HH:MM) + year-month-date + current day's name
