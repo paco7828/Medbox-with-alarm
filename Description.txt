@@ -1,2 +1,14 @@
 Functions:
 -Basic clock with current time (HH:MM) + year-month-date + current day's name
+-Alarm clock:
+  -Set a daily alarm:
+    -hours + minutes
+    -functionality description:
+      1. press confirmBtn to enter alarm clock
+      (press backBtn to return to main screen)
+      (if a current alarm is set => box will appear saying "DEL" => if selected + pressed confirmBtn => daily alarm will be deleted)
+      2. hour starts blinking => change with potentiometer
+      3. press button1 to confirm the selected hour
+      4. minute starts blinking => change with potentiometer
+      5. press button1 to confirm selected minute
+  -if an alarm is set a small box will indicate it on main screen
