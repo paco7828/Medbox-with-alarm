@@ -1,5 +1,5 @@
 Functions:
--Basic clock with current time (HH:MM) + year-month-date + current day's name
+-Basic clock with current time (HH:MM:SS) + year-month-date + current day's name
 -Alarm clock:
   -Set a daily alarm:
     -hours + minutes
