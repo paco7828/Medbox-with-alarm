@@ -1,0 +1,6 @@
+Ideas:
+-multiple layout options (eg.: normal clock view)
+-set non-daily alarms with title + time:
+	-when specified alarm goes off => popup screen will appear with the text's title
+	-user can choose the specified day+hour+minute when the alarm will go off
+-add vibrator to have a better alert at alarms
