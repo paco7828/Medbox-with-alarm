@@ -5,3 +5,4 @@ Ideas:
 	-when specified alarm goes off => popup screen will appear with the text's title
 	-user can choose the specified day+hour+minute when the alarm will go off (similar choosing functionality as the daily alarm)
 -add vibrator to have a better alert at alarms
+-add different alarm sounds (functions) --> user can preview them and set an alarm sound
