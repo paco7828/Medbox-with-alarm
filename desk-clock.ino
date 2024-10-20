@@ -4,14 +4,14 @@
 RTC_DS3231 rtc;
 
 int alarmSet = true;
+String days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 void setup() {
   Serial.begin(9600);
-
+  
   if (!rtc.begin()) {
     Serial.println("Couldn't find RTC");
-    while (1)
-      ;
+    while (1);
   }
 
   if (rtc.lostPower()) {
@@ -19,16 +19,26 @@ void setup() {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
-  DateTime now = rtc.now();
+  displayCurrentTime();
+}
 
+void loop() {
+  DateTime now = rtc.now();
+  static int lastSecond = -1;
+  int currentSecond = now.second();
+
+  if (currentSecond != lastSecond) {
+    lastSecond = currentSecond;
+    displayCurrentTime();
+  }
+}
+
+void displayCurrentTime() {
+  DateTime now = rtc.now();
   showCurrentYear(now);
   showCurrentTime(now);
   Serial.println(getCurrentDay(now));
   Serial.println("Alarm: " + getAlarmState());
-}
-
-void loop() {
-  // Nothing yet
 }
 
 void showCurrentYear(DateTime now) {
@@ -41,38 +51,20 @@ void showCurrentYear(DateTime now) {
 }
 
 void showCurrentTime(DateTime now) {
-  String correctHour = String(now.hour());
-  String correctMin = String(now.minute());
-  String correctSec = String(now.second());
-  correctHour = getCorrectValue(correctHour);
-  correctMin = getCorrectValue(correctMin);
-  correctSec = getCorrectValue(correctSec);
+  String correctHour = getCorrectValue(String(now.hour()));
+  String correctMin = getCorrectValue(String(now.minute()));
+  String correctSec = getCorrectValue(String(now.second()));
+  
   Serial.print(correctHour + ":" + correctMin + ":" + correctSec);
   Serial.println();
 }
 
-String getCorrectValue(String timePart){
+String getCorrectValue(String timePart) {
   return timePart.length() < 2 ? "0" + timePart : timePart;
 }
 
 String getCurrentDay(DateTime now) {
-  switch (now.dayOfTheWeek()) {
-    case 0:
-      return "Sunday";
-    case 1:
-      return "Monday";
-    case 2:
-      return "Tuesday";
-    case 3:
-      return "Wednesday";
-    case 4:
-      return "Thursday";
-    case 5:
-      return "Friday";
-    case 6:
-      return "Saturday";
-  }
-  return "";
+  return days[now.dayOfTheWeek()];
 }
 
 String getAlarmState() {
