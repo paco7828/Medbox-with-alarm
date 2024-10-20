@@ -14,8 +14,19 @@ RTC_DS3231 rtc;
 // Initialize TFT screen
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
+// Helper variables
 int alarmSet = false;
 String days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+bool startAlarm = true;
+
+// Initialize additional pins
+int alarm = 7;
+int backBtn = 6;
+int confirmBtn = 5;
+
+// Boolean variables for button states
+bool backBtnState;
+bool confirmBtnState;
 
 void setup() {
   // Set up screen
@@ -26,7 +37,8 @@ void setup() {
   // Set up RTC
   if (!rtc.begin()) {
     Serial.println("Couldn't find RTC");
-    while (1);
+    while (1)
+      ;
   }
 
   if (rtc.lostPower()) {
@@ -34,8 +46,16 @@ void setup() {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
+  // if time wouldn't be correct
+  //rtc.adjust(DateTime(2024, 10, 20, 19, 45, 30));
+
   DateTime now = rtc.now();
   showMainScreen(now);
+
+  // Set pins
+  pinMode(alarm, OUTPUT);
+  pinMode(backBtn, INPUT);
+  pinMode(confirmBtn, INPUT);
 }
 
 void loop() {
@@ -74,13 +94,31 @@ void loop() {
     lastYMD = currentYMD;
     updateCurrentYMD(currentYMD);
   }
+
+  // When backBtn is pressed
+  bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
+  if (backBtnCurrentState == HIGH && backBtnState == LOW) {
+    alarmTest();
+    backBtnState = HIGH;
+  } else if (backBtnCurrentState == LOW && backBtnState == HIGH) {
+    backBtnState = LOW;
+  }
+
+  // When confirmBtn is pressed
+  bool confirmBtnCurrentState = debounceBtn(confirmBtn, confirmBtnState);
+  if (confirmBtnCurrentState == HIGH && confirmBtnState == LOW) {
+    alarmTest();
+    confirmBtnState = HIGH;
+  } else if (confirmBtnCurrentState == LOW && confirmBtnState == HIGH) {
+    confirmBtnState = LOW;
+  }
 }
 
 void updateCurrentHour(int hour) {
   tft.setCursor(10, 35);
   tft.setTextSize(3);
   tft.setTextColor(ST7735_WHITE);
-  
+
   // Clear the hour area before updating
   tft.fillRect(10, 35, 50, 40, ST7735_BLACK);
   tft.print(getCorrectValue(String(hour)) + ":");
@@ -90,7 +128,7 @@ void updateCurrentMinute(int minute) {
   tft.setCursor(60, 35);
   tft.setTextSize(3);
   tft.setTextColor(ST7735_WHITE);
-  
+
   // Clear the minute area before updating
   tft.fillRect(60, 35, 50, 40, ST7735_BLACK);
   tft.print(getCorrectValue(String(minute)) + ":");
@@ -100,19 +138,19 @@ void updateCurrentSecond(int second) {
   tft.setCursor(115, 35);
   tft.setTextSize(3);
   tft.setTextColor(ST7735_WHITE);
-  
+
   // Clear the second area before updating
   tft.fillRect(115, 35, 50, 40, ST7735_BLACK);
   tft.print(getCorrectValue(String(second)));
 }
 
 void updateCurrentDay(String day) {
-  tft.setCursor(30, 75);
+  tft.setCursor(40, 75);
   tft.setTextSize(2);
   tft.setTextColor(ST7735_WHITE);
-  
+
   // Clear the area before updating the day
-  tft.fillRect(30, 75, 100, 20, ST7735_BLACK);
+  tft.fillRect(40, 75, 100, 20, ST7735_BLACK);
   tft.print(day);
 }
 
@@ -120,7 +158,7 @@ void updateCurrentYMD(String ymd) {
   tft.setCursor(20, 110);
   tft.setTextSize(2);
   tft.setTextColor(ST7735_WHITE);
-  
+
   // Clear the area before updating the YMD
   tft.fillRect(20, 110, 120, 20, ST7735_BLACK);
   tft.print(ymd);
@@ -129,7 +167,7 @@ void updateCurrentYMD(String ymd) {
 void showMainScreen(DateTime now) {
   // Reset screen
   tft.fillScreen(ST7735_BLACK);
-  
+
   // Print current alarm state
   tft.fillRect(45, 5, 70, 20, alarmSet ? ST7735_GREEN : ST7735_RED);
   tft.setCursor(51, 8);
@@ -156,4 +194,23 @@ String getCorrectValue(String timePart) {
 
 String getCurrentDay(DateTime now) {
   return days[now.dayOfTheWeek()];
+}
+
+// Alarm sound function
+void alarmTest() {
+  tone(alarm, 2000, 100);
+  delay(500);
+  tone(alarm, 2000, 100);
+  delay(500);
+  tone(alarm, 2000, 100);
+  delay(500);
+}
+
+bool debounceBtn(int btn, bool& lastState) {
+  bool currentState = digitalRead(btn);
+  if (currentState != lastState) {
+    delay(50);
+    currentState = digitalRead(btn);
+  }
+  return currentState;
 }
