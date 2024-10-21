@@ -18,10 +18,7 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 // Helper variables
 bool alarmSet = true;
 String days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
-bool startAlarm = true;
 bool onMainScreen;
-int numberOfHours = 24;
-int numberOfMinutes = 60;
 bool isHourSelected;
 
 // Variables for potmeter values
@@ -29,7 +26,7 @@ int potValue;
 int lastPotValue;
 
 // Initialize additional pins
-int alarm = 7;
+int alarmPin = 7;
 int backBtn = 6;
 int confirmBtn = 5;
 int potPin = A0;
@@ -38,6 +35,7 @@ int potPin = A0;
 bool backBtnState;
 bool confirmBtnState;
 
+// Get alarm values from EEPROM
 int alarmHourInt = EEPROM.read(0);
 int alarmMinuteInt = EEPROM.read(1);
 
@@ -49,20 +47,27 @@ void setup() {
 
   // Set up RTC
   if (!rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    tft.setCursor(30, 55);
+    tft.setTextSize(1);
+    tft.print("Couldn't find RTC");
     while (1)
       ;
   }
 
   if (rtc.lostPower()) {
-    Serial.println("RTC lost power, setting the time!");
+    tft.setCursor(30, 45);
+    tft.setTextSize(1);
+    tft.print("RTC lost power,");
+    tft.setCursor(30, 55);
+    tft.print("setting the time!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
+  // Load main screen by default
   showMainScreen(rtc.now());
 
   // Set pins
-  pinMode(alarm, OUTPUT);
+  pinMode(alarmPin, OUTPUT);
   pinMode(backBtn, INPUT);
   pinMode(confirmBtn, INPUT);
 }
@@ -125,10 +130,8 @@ void loop() {
       if (!onMainScreen) {
         showMainScreen(now);
       } else {
-        // Toggle the alarmSet variable
-        alarmSet = !alarmSet;
-
         // Update the alarm indicator on the screen
+        alarmSet = !alarmSet;
         updateAlarmIndicator();
       }
       backBtnState = HIGH;
@@ -139,6 +142,7 @@ void loop() {
     // When confirmBtn is pressed
     bool confirmBtnCurrentState = debounceBtn(confirmBtn, confirmBtnState);
     if (confirmBtnCurrentState == HIGH && confirmBtnState == LOW) {
+      // Show daily alarm screen
       showDailyAlarm();
       confirmBtnState = HIGH;
     } else if (confirmBtnCurrentState == LOW && confirmBtnState == HIGH) {
@@ -147,6 +151,7 @@ void loop() {
   }
 }
 
+// Functions to update each values on the main screen
 void updateCurrentHour(int hour) {
   tft.setCursor(10, 35);
   tft.setTextSize(3);
@@ -188,7 +193,6 @@ void updateCurrentYMD(String ymd) {
 }
 
 void updateAlarmIndicator() {
-  // Update the alarm indicator on the screen
   tft.fillRect(10, 5, 140, 20, alarmSet ? ST7735_GREEN : ST7735_RED);
   tft.setCursor(16, 8);
   tft.setTextSize(2);
@@ -196,13 +200,11 @@ void updateAlarmIndicator() {
   tft.print("Alarm " + (alarmHourInt != 255 ? getCorrectValue(String(alarmHourInt)) : "--") + ":" + (alarmMinuteInt != 255 ? getCorrectValue(String(alarmMinuteInt)) : "--"));
 }
 
-
 void showMainScreen(DateTime now) {
   onMainScreen = true;
+  // Reset main screen and update values
   tft.fillScreen(ST7735_BLACK);
   updateAlarmIndicator();
-
-  // Update current time and date display
   updateCurrentHour(now.hour());
   updateCurrentMinute(now.minute());
   updateCurrentSecond(now.second());
@@ -225,11 +227,11 @@ String getCurrentDay(DateTime now) {
 
 // Alarm sound function
 void triggerAlarm() {
-  tone(alarm, 2000, 100);
+  tone(alarmPin, 2000, 100);
   delay(500);
 }
 
-
+// Function for button debouncing
 bool debounceBtn(int btn, bool& lastState) {
   bool currentState = digitalRead(btn);
   if (currentState != lastState) {
@@ -239,20 +241,19 @@ bool debounceBtn(int btn, bool& lastState) {
   return currentState;
 }
 
+// Function to show the daily alarm part
 void showDailyAlarm() {
   onMainScreen = false;
-  isHourSelected = true;  // Start by selecting the hour
+  isHourSelected = true;  // Select hour by default
   tft.fillScreen(ST7735_BLACK);
-
   tft.setCursor(15, 10);
   tft.setTextSize(2);
   tft.setTextColor(ST7735_WHITE);
   tft.print("Daily alarm");
-
   // Initially display "00:00"
   tft.setCursor(35, 50);
   tft.setTextSize(3);
-  tft.setTextColor(ST7735_WHITE);  // White for minutes
+  tft.setTextColor(ST7735_WHITE);
   tft.print("00:00");
 
   int currentHour = 0;
@@ -261,12 +262,12 @@ void showDailyAlarm() {
   // While we are selecting hours
   while (isHourSelected && !onMainScreen) {
     potValue = analogRead(potPin);
-    currentHour = map(potValue, 0, 1023, 0, numberOfHours - 1);  // Map potmeter to hour range
+    currentHour = map(potValue, 0, 1023, 0, 23);  // Map potmeter to hour range
 
     // Only update if the hour has changed
     if (currentHour != lastPotValue) {
       lastPotValue = currentHour;
-      updateAlarmHour(getCorrectValue(String(currentHour)));  // Update hour display
+      updateAlarmHour(getCorrectValue(String(currentHour)));
     }
 
     // Handle button press to confirm hour selection
@@ -283,16 +284,11 @@ void showDailyAlarm() {
 }
 
 void showMinuteSelection(int selectedHour) {
-  onMainScreen = false;
-  tft.setCursor(35, 50);
-  tft.setTextSize(3);
-  tft.setTextColor(ST7735_GREEN);
-
   int currentMinute = 0;
 
   while (!isHourSelected) {
     potValue = analogRead(potPin);
-    currentMinute = map(potValue, 0, 1023, 0, numberOfMinutes - 1);
+    currentMinute = map(potValue, 0, 1023, 0, 59);
 
     // Only update if the minute has changed
     if (currentMinute != lastPotValue) {
