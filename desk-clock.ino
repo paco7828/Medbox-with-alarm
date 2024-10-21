@@ -39,6 +39,9 @@ bool confirmBtnState;
 int alarmHourInt = EEPROM.read(0);
 int alarmMinuteInt = EEPROM.read(1);
 
+// New variable to track if alarm has been stopped for the current alarm time
+bool alarmStoppedForCurrentTime = false;
+
 void setup() {
   // Set up screen
   tft.initR(INITR_BLACKTAB);
@@ -89,13 +92,18 @@ void loop() {
 
   if (onMainScreen) {
     if (alarmSet) {
-      // Start alarm at specified time
-      if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt) {
+      // Reset alarmStoppedForCurrentTime when it's no longer alarm time
+      if (currentHour != alarmHourInt || currentMinute != alarmMinuteInt) {
+        alarmStoppedForCurrentTime = false;
+      }
+
+      // Start alarm at specified time if it hasn't been stopped
+      if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt && currentSecond <= 30 && !alarmStoppedForCurrentTime) {
         triggerAlarm();
         // When back button is pressed turn off alarm
         bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
         if (backBtnCurrentState == HIGH && backBtnState == LOW) {
-          alarmSet = false;
+          alarmStoppedForCurrentTime = true;
           backBtnState = HIGH;
         } else if (backBtnCurrentState == LOW && backBtnState == HIGH) {
           backBtnState = LOW;
@@ -235,7 +243,7 @@ void triggerAlarm() {
 bool debounceBtn(int btn, bool& lastState) {
   bool currentState = digitalRead(btn);
   if (currentState != lastState) {
-    delay(50);
+    delay(200);
     currentState = digitalRead(btn);
   }
   return currentState;
@@ -244,13 +252,12 @@ bool debounceBtn(int btn, bool& lastState) {
 // Function to show the daily alarm part
 void showDailyAlarm() {
   onMainScreen = false;
-  isHourSelected = true;  // Select hour by default
+  isHourSelected = true;  // Start with hour selection
   tft.fillScreen(ST7735_BLACK);
   tft.setCursor(15, 10);
   tft.setTextSize(2);
   tft.setTextColor(ST7735_WHITE);
   tft.print("Daily alarm");
-  // Initially display "00:00"
   tft.setCursor(35, 50);
   tft.setTextSize(3);
   tft.setTextColor(ST7735_WHITE);
@@ -259,53 +266,45 @@ void showDailyAlarm() {
   int currentHour = 0;
   int currentMinute = 0;
 
-  // While we are selecting hours
-  while (isHourSelected && !onMainScreen) {
+  while (!onMainScreen) {
     potValue = analogRead(potPin);
-    currentHour = map(potValue, 0, 1023, 0, 23);  // Map potmeter to hour range
 
-    // Only update if the hour has changed
-    if (currentHour != lastPotValue) {
-      lastPotValue = currentHour;
-      updateAlarmHour(getCorrectValue(String(currentHour)));
+    if (isHourSelected) {
+      currentHour = map(potValue, 0, 1023, 0, 23);
+      if (currentHour != lastPotValue) {
+        lastPotValue = currentHour;
+        updateAlarmHour(getCorrectValue(String(currentHour)));
+      }
+    } else {
+      currentMinute = map(potValue, 0, 1023, 0, 59);
+      if (currentMinute != lastPotValue) {
+        lastPotValue = currentMinute;
+        updateAlarmMinute(getCorrectValue(String(currentMinute)));
+      }
     }
 
-    // Handle button press to confirm hour selection
-    bool confirmBtnCurrentState = debounceBtn(confirmBtn, confirmBtnState);
-    if (confirmBtnCurrentState == HIGH && confirmBtnState == LOW) {
-      EEPROM.write(0, currentHour);
-      isHourSelected = false;
-      alarmHourInt = currentHour;
-      showMinuteSelection(currentHour);
-    } else if (confirmBtnCurrentState == LOW && confirmBtnState == HIGH) {
-      confirmBtnState = LOW;
-    }
-  }
-}
-
-void showMinuteSelection(int selectedHour) {
-  int currentMinute = 0;
-
-  while (!isHourSelected) {
-    potValue = analogRead(potPin);
-    currentMinute = map(potValue, 0, 1023, 0, 59);
-
-    // Only update if the minute has changed
-    if (currentMinute != lastPotValue) {
-      lastPotValue = currentMinute;
-      updateAlarmMinute(getCorrectValue(String(currentMinute)));  // Update minute display
-    }
-
-    // Handle button press to confirm minute selection
-    bool confirmBtnCurrentState = debounceBtn(confirmBtn, confirmBtnState);
-    if (confirmBtnCurrentState == HIGH && confirmBtnState == LOW) {
-      EEPROM.write(1, currentMinute);
-      alarmMinuteInt = currentMinute;
-      isHourSelected = true;
+    // Handle back button press to return to the main screen
+    bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
+    if (backBtnCurrentState == HIGH && backBtnState == LOW) {
       onMainScreen = true;
       showMainScreen(rtc.now());
-    } else if (confirmBtnCurrentState == LOW && confirmBtnState == HIGH) {
-      confirmBtnState = LOW;
+      return;
+    }
+
+    // Handle button press to confirm selection
+    bool confirmBtnCurrentState = debounceBtn(confirmBtn, confirmBtnState);
+    if (confirmBtnCurrentState == HIGH && confirmBtnState == LOW) {
+      if (isHourSelected) {
+        EEPROM.write(0, currentHour);
+        alarmHourInt = currentHour;
+        isHourSelected = false;
+        updateAlarmHour(getCorrectValue(String(currentHour)));
+      } else {
+        EEPROM.write(1, currentMinute);
+        alarmMinuteInt = currentMinute;
+        onMainScreen = true;
+        showMainScreen(rtc.now());
+      }
     }
   }
 }
