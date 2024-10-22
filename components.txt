@@ -3,3 +3,4 @@ DS3231+AT24C32 RTCM (Real Time Clock module) --> https://www.hestore.hu/prod_100
 LD-BZEN-1205 (buzzer) --> https://www.hestore.hu/prod_10040906.html
 2x TACTS-12x12x7.3 (tact button) --> https://www.hestore.hu/prod_10042024.html
 POM1615 LIN 10K B (potmeter) --> https://www.hestore.hu/prod_10027737.html
+2x 10K 1% (pulldown resistor) --> https://www.hestore.hu/prod_10020541.html
