@@ -3,12 +3,16 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <EEPROM.h>
+#include <Servo.h> // Include servo library
 
 // Define TFT pins
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
 
+
+// Initialize servo
+Servo boxServo;
 // Initialize RTC
 RTC_DS3231 rtc;
 
@@ -73,6 +77,7 @@ void setup() {
   pinMode(alarmPin, OUTPUT);
   pinMode(backBtn, INPUT);
   pinMode(confirmBtn, INPUT);
+  boxServo.attach(4);
 }
 
 void loop() {
@@ -100,6 +105,7 @@ void loop() {
       // Start alarm at specified time if it hasn't been stopped
       if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt && currentSecond <= 30 && !alarmStoppedForCurrentTime) {
         triggerAlarm();
+        boxServo.write(180); // Open med-box
         // When back button is pressed turn off alarm
         bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
         if (backBtnCurrentState == HIGH && backBtnState == LOW) {
