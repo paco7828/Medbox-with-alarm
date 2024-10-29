@@ -6,4 +6,4 @@ POM1615 LIN 10K B (potmeter) --> https://www.hestore.hu/prod_10027737.html
 2x 10K 1% (pulldown resistor) --> https://www.hestore.hu/prod_10020541.html
 AR-NANOCH-TYPE-C (microcontroller) --> https://www.hestore.hu/prod_10044468.html
 MS/SG-90 servo (servo motor) --> https://www.hestore.hu/prod_10031188.html
-KCD1-101 (switch) --> https://www.hestore.hu/prod_10036506.html
+TSM102A2 (toggle switch) --> https://www.hestore.hu/prod_10034537.html
