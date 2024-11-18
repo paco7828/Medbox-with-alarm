@@ -3,13 +3,12 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <EEPROM.h>
-#include <Servo.h> // Include servo library
+#include <Servo.h>
 
 // Define TFT pins
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
-
 
 // Initialize servo
 Servo boxServo;
@@ -21,7 +20,7 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // Helper variables
 bool alarmSet = true;
-String days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+String days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 bool onMainScreen;
 bool isHourSelected;
 
@@ -33,7 +32,7 @@ int lastPotValue;
 int alarmPin = 7;
 int backBtn = 6;
 int confirmBtn = 5;
-int potPin = A0;
+int potPin = A2;
 
 // Boolean variables for button states
 bool backBtnState;
@@ -70,6 +69,12 @@ void setup() {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
+  // Check if time drift adjustment is needed
+  if (EEPROM.read(2) != 1) {
+    adjustForDrift();
+    EEPROM.write(2, 1); // Mark adjustment as complete
+  }
+
   // Load main screen by default
   showMainScreen(rtc.now());
 
@@ -77,7 +82,7 @@ void setup() {
   pinMode(alarmPin, OUTPUT);
   pinMode(backBtn, INPUT);
   pinMode(confirmBtn, INPUT);
-  boxServo.attach(4);
+  boxServo.attach(2);
 }
 
 void loop() {
@@ -105,15 +110,7 @@ void loop() {
       // Start alarm at specified time if it hasn't been stopped
       if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt && currentSecond <= 30 && !alarmStoppedForCurrentTime) {
         triggerAlarm();
-        boxServo.write(180); // Open med-box
-        // When back button is pressed turn off alarm
-        bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
-        if (backBtnCurrentState == HIGH && backBtnState == LOW) {
-          alarmStoppedForCurrentTime = true;
-          backBtnState = HIGH;
-        } else if (backBtnCurrentState == LOW && backBtnState == HIGH) {
-          backBtnState = LOW;
-        }
+        alarmStoppedForCurrentTime = true;
       }
     }
     // Update only changed values
@@ -241,8 +238,20 @@ String getCurrentDay(DateTime now) {
 
 // Alarm sound function
 void triggerAlarm() {
-  tone(alarmPin, 2000, 100);
-  delay(500);
+  boxServo.write(180);
+
+  // Sound the buzzer for 10 seconds
+  // Sum = 15 seconds (delays)
+  for (int i = 0; i < 10; i++) {
+    tone(alarmPin, 2000, 500);
+    delay(1000);
+  }
+
+  // Add 15 more seconds for the box to be opened
+  delay(15000);
+
+  // Close the box
+  boxServo.write(0);
 }
 
 // Function for button debouncing
@@ -329,4 +338,10 @@ void updateAlarmMinute(String minute) {
   tft.setTextColor(ST7735_GREEN);
   tft.fillRect(81, 49, 41, 23, ST7735_BLACK);
   tft.print(minute);
+}
+
+void adjustForDrift() {
+  DateTime now = rtc.now();
+  DateTime adjustedTime = now - TimeSpan(0, 0, 2, 30);
+  rtc.adjust(adjustedTime);
 }
