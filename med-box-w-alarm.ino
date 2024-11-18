@@ -83,6 +83,7 @@ void setup() {
   pinMode(backBtn, INPUT);
   pinMode(confirmBtn, INPUT);
   boxServo.attach(2);
+  boxServo.write(0);
 }
 
 void loop() {
@@ -238,7 +239,7 @@ String getCurrentDay(DateTime now) {
 
 // Alarm sound function
 void triggerAlarm() {
-  boxServo.write(180);
+  boxServo.write(90);
 
   // Sound the buzzer for 10 seconds
   // Sum = 15 seconds (delays)
