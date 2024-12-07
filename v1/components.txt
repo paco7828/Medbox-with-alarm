@@ -1,0 +1,9 @@
+JC1216S18N (screen) --> https://www.hestore.hu/prod_10045986.html#
+DS3231+AT24C32 RTCM (Real Time Clock module) --> https://www.hestore.hu/prod_10038042.html
+LD-BZEN-1205 (buzzer) --> https://www.hestore.hu/prod_10040906.html
+2x TACTS-12x12x7.3 (tact button) --> https://www.hestore.hu/prod_10042024.html
+POM1615 LIN 10K B (potmeter) --> https://www.hestore.hu/prod_10027737.html
+2x 10K 1% (pulldown resistor) --> https://www.hestore.hu/prod_10020541.html
+AR-NANOCH-TYPE-C (microcontroller) --> https://www.hestore.hu/prod_10044468.html
+MS/SG-90 servo (servo motor) --> https://www.hestore.hu/prod_10031188.html
+TSM102A2 (toggle switch) --> https://www.hestore.hu/prod_10034537.html

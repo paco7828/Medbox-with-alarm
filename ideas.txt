@@ -1,6 +1,0 @@
-Ideas:
--add different alarm sounds (functions) --> user can preview them and set an alarm sound
--attach servo to the circuit (small box which can be opened via servo) --> store medicine inside box
--attach water dispenser
-	=> full medicine reminder kit (medicine alarm + box + water dispenser)
--add switch which acts as a screen on/off
