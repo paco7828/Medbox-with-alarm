@@ -1,0 +1,17 @@
+Needed:
+    -microcontroller (21760 bytes = Sketch + 645 byte global variables)
+    -screen - 
+    -2 buttons:
+        -toggle alarm
+        -start setting time
+    -piezo - 
+    -rotary encoder - EC12E20-24P24C-SW - https://www.hestore.hu/prod_10040813.html
+    -servo motor - MS/SG-90 servo - https://www.hestore.hu/prod_10031188.html
+    -rtc
+    -switch for screen toggle - TSM102A2 - https://www.hestore.hu/prod_10034537.html
+    -battery - KXD 383450PL M - https://www.hestore.hu/prod_10036161.html
+    -step up converter - STUP-5.0 - https://www.hestore.hu/prod_10039426.html#
+    -battery charger (type-c) - TP4056-1A-USBC - https://www.hestore.hu/prod_10042093.html
+    -battery monitoring IC - 
+
+    TO BE CONTINUED
