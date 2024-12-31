@@ -20,7 +20,7 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // Helper variables
 bool alarmSet = true;
-String days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+String days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 bool onMainScreen;
 bool isHourSelected;
 
@@ -67,12 +67,6 @@ void setup() {
     tft.setCursor(30, 55);
     tft.print("setting the time!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
-
-  // Check if time drift adjustment is needed
-  if (EEPROM.read(2) != 1) {
-    adjustForDrift();
-    EEPROM.write(2, 1); // Mark adjustment as complete
   }
 
   // Load main screen by default
@@ -241,11 +235,15 @@ String getCurrentDay(DateTime now) {
 void triggerAlarm() {
   boxServo.write(90);
 
-  // Sound the buzzer for 10 seconds
-  // Sum = 15 seconds (delays)
-  for (int i = 0; i < 10; i++) {
-    tone(alarmPin, 2000, 500);
-    delay(1000);
+  // Double beep alarm
+  for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 2; i++) {
+      tone(alarmPin, 4000);
+      delay(100);
+      noTone(alarmPin);
+      delay(100);
+    }
+    delay(700);
   }
 
   // Add 15 more seconds for the box to be opened
@@ -339,10 +337,4 @@ void updateAlarmMinute(String minute) {
   tft.setTextColor(ST7735_GREEN);
   tft.fillRect(81, 49, 41, 23, ST7735_BLACK);
   tft.print(minute);
-}
-
-void adjustForDrift() {
-  DateTime now = rtc.now();
-  DateTime adjustedTime = now - TimeSpan(0, 0, 2, 30);
-  rtc.adjust(adjustedTime);
 }
