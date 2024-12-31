@@ -23,16 +23,20 @@ bool alarmSet = true;
 String days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 bool onMainScreen;
 bool isHourSelected;
+bool alarmActive = false;
+bool boxOpen = false;
+unsigned long boxOpenStartTime = 0;
+int boxOpenFor = 20;  // Amount of seconds for the box to be opened
 
 // Variables for potmeter values
 int potValue;
 int lastPotValue;
 
 // Initialize additional pins
-int alarmPin = 7;
-int backBtn = 6;
-int confirmBtn = 5;
-int potPin = A2;
+byte alarmPin = 7;
+byte backBtn = 6;
+byte confirmBtn = 5;
+byte potPin = A2;
 
 // Boolean variables for button states
 bool backBtnState;
@@ -42,7 +46,7 @@ bool confirmBtnState;
 int alarmHourInt = EEPROM.read(0);
 int alarmMinuteInt = EEPROM.read(1);
 
-// New variable to track if alarm has been stopped for the current alarm time
+// Variable to track if alarm has been stopped for the current alarm time
 bool alarmStoppedForCurrentTime = false;
 
 void setup() {
@@ -106,6 +110,13 @@ void loop() {
       if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt && currentSecond <= 30 && !alarmStoppedForCurrentTime) {
         triggerAlarm();
         alarmStoppedForCurrentTime = true;
+      }
+
+      // Handle box closing after 15 seconds
+      if (boxOpen && millis() - boxOpenStartTime >= boxOpenFor * 1000) {
+        boxServo.write(0);  // Close the box
+        boxOpen = false;
+        alarmActive = false;  // Reset the alarm state
       }
     }
     // Update only changed values
@@ -233,24 +244,27 @@ String getCurrentDay(DateTime now) {
 
 // Alarm sound function
 void triggerAlarm() {
-  boxServo.write(90);
+  unsigned long prevTime = 0;
+  unsigned long currentTime = millis();
+  // Activate alarm
+  alarmActive = true;
+  if (!boxOpen) {
+    // Open the box
+    boxServo.write(90);
+    boxOpen = true;
+    boxOpenStartTime = millis();
+  }
 
-  // Double beep alarm
-  for (int i = 0; i < 3; i++) {
-    for (int i = 0; i < 2; i++) {
+  // Alarm sound
+  if (currentTime - prevTime >= 700) {
+    for (int i = 0; i < 5; i++) {
       tone(alarmPin, 2000);
       delay(100);
       noTone(alarmPin);
       delay(100);
     }
-    delay(700);
+    prevTime = currentTime;
   }
-
-  // Add 15 more seconds for the box to be opened
-  delay(15000);
-
-  // Close the box
-  boxServo.write(0);
 }
 
 // Function for button debouncing
