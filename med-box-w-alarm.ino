@@ -236,9 +236,9 @@ void triggerAlarm() {
   boxServo.write(90);
 
   // Double beep alarm
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 3; i++) {
     for (int i = 0; i < 2; i++) {
-      tone(alarmPin, 4000);
+      tone(alarmPin, 2000);
       delay(100);
       noTone(alarmPin);
       delay(100);
