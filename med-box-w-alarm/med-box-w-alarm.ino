@@ -19,6 +19,11 @@ constexpr uint8_t BUZZER_PIN = 20;
 constexpr uint8_t RTC_SDA = 6;
 constexpr uint8_t RTC_SCL = 7;
 
+// Deep sleep
+constexpr uint32_t AWAKE_TIME_MS = 120000;      // 2 minutes (ms)
+constexpr uint32_t SLEEP_TIME_US = 1800000000;  // 30 minutes (ms)
+unsigned long wakeTime = 0;
+
 // Instances
 Servo boxServo;
 RTC_DS3231 rtc;
@@ -56,6 +61,8 @@ int tempAlarmHour = 0;
 int tempAlarmMinute = 0;
 
 void setup() {
+  wakeTime = millis();
+
   // Initialize Preferences
   preferences.begin("alarm-clock", false);
 
@@ -109,6 +116,10 @@ void setup() {
 }
 
 void loop() {
+  if (millis() - wakeTime >= AWAKE_TIME_MS) {
+    goToDeepSleep();
+  }
+
   // Handle RTC time updates
   if (rtcFound && onMainScreen) {
     DateTime now = rtc.now();
@@ -170,18 +181,35 @@ void loop() {
   }
 }
 
+void goToDeepSleep() {
+  digitalWrite(TFT_LED, LOW);
+  tft.enableSleep(true);
+  boxServo.detach();
+
+  // Timer wakeup
+  esp_sleep_enable_timer_wakeup(SLEEP_TIME_US);
+
+  // Button wakeup
+  esp_deep_sleep_enable_gpio_wakeup(1 << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_start();
+}
+
 void handleMainScreenButtons() {
   // BTN1: Toggle alarm on/off
   if (buttonPressed(BTN1_PIN, lastBtn1State, lastBtn1Press)) {
     alarmSet = !alarmSet;
     updateAlarmIndicator();
     tone(BUZZER_PIN, 1500, 50);
+    // Reset wake timer
+    wakeTime = millis();
   }
 
   // BTN2: Enter alarm setting mode
   if (buttonPressed(BTN2_PIN, lastBtn2State, lastBtn2Press)) {
     showDailyAlarm();
     tone(BUZZER_PIN, 2000, 50);
+    // Reset wake timer
+    wakeTime = millis();
   }
 }
 
@@ -202,6 +230,8 @@ void handleAlarmSettingButtons() {
       updateAlarmMinute(getCorrectValue(String(tempAlarmMinute)));
     }
     tone(BUZZER_PIN, 1800, 30);
+    // Reset wake timer
+    wakeTime = millis();
   }
 
   // BTN2: Decrement or double-click to confirm
@@ -254,6 +284,8 @@ void handleAlarmSettingButtons() {
       waitingForDoubleClick = true;
       singleClickTime = currentTime;
     }
+    // Reset wake timer
+    wakeTime = millis();
   }
 
   // Check if single-click timeout expired
