@@ -349,28 +349,36 @@ String getCorrectValue(String timePart) {
 
 // Alarm sound function
 void triggerAlarm() {
-  unsigned long prevTime = 0;
-  unsigned long currentTime = millis();
+  static unsigned long lastCycle = 0;
+  static int beepStep = 0;
+  unsigned long now = millis();
 
-  // Activate alarm
   alarmActive = true;
 
   if (!boxOpen) {
-    // Open the box
     boxServo.write(90);
     boxOpen = true;
     boxOpenStartTime = millis();
   }
 
-  // Alarm sound
-  if (currentTime - prevTime >= 700) {
-    for (int i = 0; i < 5; i++) {
-      tone(BUZZER_PIN, 2000);
-      delay(100);
-      noTone(BUZZER_PIN);
-      delay(100);
+  if (beepStep < 6) {
+    if (now - lastCycle >= 150) {
+      lastCycle = now;
+
+      if (beepStep % 2 == 0) {
+        tone(BUZZER_PIN, 3700);
+      } else {
+        noTone(BUZZER_PIN);
+      }
+
+      beepStep++;
     }
-    prevTime = currentTime;
+  } else {
+    noTone(BUZZER_PIN);
+    if (now - lastCycle >= 2000) {
+      beepStep = 0;
+      lastCycle = now;
+    }
   }
 }
 
