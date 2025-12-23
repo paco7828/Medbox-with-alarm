@@ -115,6 +115,16 @@ void loop() {
     static int lastHour = -1;
     static int lastMinute = -1;
     static int lastSecond = -1;
+    static String lastDateStr = "";
+
+    String currentDateStr = String(now.year()) + "-" + getCorrectValue(String(now.month())) + "-" + getCorrectValue(String(now.day()));
+
+    // Update date if changed
+    if (currentDateStr != lastDateStr) {
+      lastDateStr = currentDateStr;
+      updateDateDisplay(now);
+      updateDayDisplay(now);
+    }
 
     // Get current values
     int currentHour = now.hour();
@@ -277,59 +287,60 @@ bool buttonPressed(int pin, bool &lastState, unsigned long &lastPressTime) {
   return false;
 }
 
-// Functions to update each value on the main screen
 void updateCurrentHour(int hour) {
-  tft.setCursor(10, 35);
-  tft.setTextSize(3);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.fillRect(10, 35, 50, 40, ST77XX_BLACK);
-  tft.print(getCorrectValue(String(hour)) + ":");
+  tft.fillRect(0, 45, 80, 30, ST77XX_BLACK);
+  String hourStr = getCorrectValue(String(hour)) + ":";
+  drawCenteredText(hourStr, 45, 3, ST77XX_WHITE);
 }
 
 void updateCurrentMinute(int minute) {
-  tft.setCursor(60, 35);
-  tft.setTextSize(3);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.fillRect(60, 35, 50, 40, ST77XX_BLACK);
-  tft.print(getCorrectValue(String(minute)) + ":");
+  tft.fillRect(80, 45, 80, 30, ST77XX_BLACK);
+  String minuteStr = getCorrectValue(String(minute)) + ":";
+  drawCenteredText(minuteStr, 45, 3, ST77XX_WHITE);
 }
 
 void updateCurrentSecond(int second) {
-  tft.setCursor(115, 35);
-  tft.setTextSize(3);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.fillRect(115, 35, 50, 40, ST77XX_BLACK);
-  tft.print(getCorrectValue(String(second)));
+  tft.fillRect(140, 45, 20, 30, ST77XX_BLACK);
+  String secondStr = getCorrectValue(String(second));
+  drawCenteredText(secondStr, 45, 3, ST77XX_WHITE);
+}
+
+void updateDateDisplay(DateTime now) {
+  String dateStr = String(now.year()) + "-" + getCorrectValue(String(now.month())) + "-" + getCorrectValue(String(now.day()));
+  tft.fillRect(0, 80, tft.width(), 20, ST77XX_BLACK);
+  drawCenteredText(dateStr, 80, 2, ST77XX_WHITE);
+}
+
+void updateDayDisplay(DateTime now) {
+  String dayStr = getDayName(now.dayOfTheWeek());
+  tft.fillRect(0, 105, tft.width(), 20, ST77XX_BLACK);
+  drawCenteredText(dayStr, 105, 2, ST77XX_CYAN);
 }
 
 void updateAlarmIndicator() {
-  tft.fillRect(10, 5, 140, 20, alarmSet ? ST77XX_GREEN : ST77XX_RED);
-  tft.setCursor(16, 8);
-  tft.setTextSize(2);
-  tft.setTextColor(alarmSet ? ST77XX_BLACK : ST77XX_WHITE);
+  tft.fillRect(0, 5, tft.width(), 25, ST77XX_BLACK);
+  tft.fillRect(0, 5, tft.width(), 25, alarmSet ? ST77XX_GREEN : ST77XX_RED);
   String alarmText = "Alarm " + getCorrectValue(String(alarmHourInt)) + ":" + getCorrectValue(String(alarmMinuteInt));
-  tft.print(alarmText);
+  drawCenteredText(alarmText, 8, 2, alarmSet ? ST77XX_BLACK : ST77XX_WHITE);
 }
 
 void showMainScreen(DateTime now) {
   onMainScreen = true;
-  // Reset main screen and update values
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-  updateCurrentHour(now.hour());
-  updateCurrentMinute(now.minute());
-  updateCurrentSecond(now.second());
+  String timeStr = getCorrectValue(String(now.hour())) + ":" + getCorrectValue(String(now.minute())) + ":" + getCorrectValue(String(now.second()));
+  drawCenteredText(timeStr, 45, 3, ST77XX_WHITE);
+  updateDateDisplay(now);
+  updateDayDisplay(now);
 }
 
 void showMainScreenNoRTC() {
   onMainScreen = true;
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-
-  tft.setCursor(10, 35);
-  tft.setTextSize(3);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print("00:00:00");
+  drawCenteredText("00:00:00", 45, 3, ST77XX_WHITE);
+  drawCenteredText("YYYY-MM-DD", 80, 2, ST77XX_WHITE);
+  drawCenteredText("Unknown", 105, 2, ST77XX_CYAN);
 }
 
 String getCorrectValue(String timePart) {
@@ -411,4 +422,34 @@ void updateAlarmMinute(String minute) {
   tft.setTextColor(ST77XX_GREEN);
   tft.fillRect(81, 49, 41, 23, ST77XX_BLACK);
   tft.print(minute);
+}
+
+String getDayName(uint8_t dayOfWeek) {
+  switch (dayOfWeek) {
+    case 0: return "Sunday";
+    case 1: return "Monday";
+    case 2: return "Tuesday";
+    case 3: return "Wednesday";
+    case 4: return "Thursday";
+    case 5: return "Friday";
+    case 6: return "Saturday";
+    default: return "Unknown";
+  }
+}
+
+// Function to center text
+void drawCenteredText(String text, int y, int textSize, uint16_t color) {
+  tft.setTextSize(textSize);
+  tft.setTextColor(color);
+
+  // Calculate width of text
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+  // Calculate centered position
+  int x = (tft.width() - w) / 2;
+
+  tft.setCursor(x, y);
+  tft.print(text);
 }
