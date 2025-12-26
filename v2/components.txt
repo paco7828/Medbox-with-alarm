@@ -1,17 +1,26 @@
-Needed:
-    -microcontroller (21760 bytes = Sketch + 645 byte global variables)
-    -screen - 
-    -2 buttons:
-        -toggle alarm
-        -start setting time
-    -piezo - 
-    -rotary encoder - EC12E20-24P24C-SW - https://www.hestore.hu/prod_10040813.html
-    -servo motor - MS/SG-90 servo - https://www.hestore.hu/prod_10031188.html
-    -rtc
-    -switch for screen toggle - TSM102A2 - https://www.hestore.hu/prod_10034537.html
-    -battery - KXD 383450PL M - https://www.hestore.hu/prod_10036161.html
-    -step up converter - STUP-5.0 - https://www.hestore.hu/prod_10039426.html#
-    -battery charger (type-c) - TP4056-1A-USBC - https://www.hestore.hu/prod_10042093.html
-    -battery monitoring IC - 
-
-    TO BE CONTINUED
+1x TYPE-C USB - https://www.hestore.hu/prod_10046971.html
+2x 5.1k 0805 resistor - https://www.hestore.hu/prod_10001349.html
+2x 1N5819 diode - https://www.hestore.hu/prod_10046229.html
+1x Red LED - https://www.hestore.hu/prod_10043215.html
+1x Green LED - https://www.hestore.hu/prod_10036384.html
+3x 10uF 0805 capacitor - https://www.hestore.hu/prod_10032047.html
+3x 1k 0805 resistor - https://www.hestore.hu/prod_10031299.html
+1x TP4056 IC - https://www.hestore.hu/prod_10037291.html
+1x 1.2k 0805 resistor - https://www.hestore.hu/prod_10001268.html
+1x DW01 IC - https://www.hestore.hu/prod_10046612.html
+1x 8205A IC - https://www.hestore.hu/prod_10045032.html
+1x MT3608 IC - https://www.hestore.hu/prod_10048950.html
+1x 22uH 0705 inductor - https://www.hestore.hu/prod_10046500.html
+1x 7.5k 0805 resistor - https://www.hestore.hu/prod_10001197.html
+1x B2B-XH-A - https://www.hestore.hu/prod_10041549.html
+1x Buzzer - https://www.hestore.hu/prod_10044010.html
+1x Power switch
+1x B8B-XH-A - https://www.hestore.hu/prod_10041554.html
+1x 1.8" TFT Display - https://www.hestore.hu/prod_10045986.html
+1x 180° servo - https://www.hestore.hu/prod_10047934.html
+1x MCU - https://www.hestore.hu/prod_10048018.html
+2x 100nF 0805 capacitor - https://www.hestore.hu/prod_10001122.html
+2x Button - https://www.hestore.hu/prod_10043772.html
+1x DS3231M IC - https://www.aliexpress.com/item/1005008686698228.html?spm=a2g0o.productlist.main.3.2b1a1b72EXxn4C&algo_pvid=93a4b71a-9d60-4086-bd4a-33e7217feff6&algo_exp_id=93a4b71a-9d60-4086-bd4a-33e7217feff6-2&pdp_ext_f=%7B%22order%22%3A%2210%22%2C%22eval%22%3A%221%22%2C%22fromPage%22%3A%22search%22%7D&pdp_npi=6%40dis%21HUF%211323.05%21472.76%21%21%213.89%211.39%21%40211b80c217665884028808694e67f1%2112000046240769312%21sea%21HU%210%21ABX%211%210%21n_tag%3A-29910%3Bd%3A7de61104%3Bm03_new_user%3A-29895%3BpisId%3A5000000187448270&curPageLogUid=onRz5161ymKB&utparam-url=scene%3Asearch%7Cquery_from%3A%7Cx_object_id%3A1005008686698228%7C_p_origin_prod%3A
+2x 4.7k 0805 resistor - https://www.hestore.hu/prod_10001183.html
+1x CR2032 Battery - https://www.hestore.hu/prod_10001070.html
