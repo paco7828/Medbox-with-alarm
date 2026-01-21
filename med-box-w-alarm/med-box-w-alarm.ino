@@ -44,12 +44,18 @@ bool alarmStoppedForCurrentTime = false;
 unsigned long boxOpenStartTime = 0;
 
 // Button state variables
+bool btn1LastReading = HIGH;
+bool btn2LastReading = HIGH;
+unsigned long btn1LastDebounceTime = 0;
+unsigned long btn2LastDebounceTime = 0;
+bool btn1State = HIGH;
+bool btn2State = HIGH;
+bool btn1LastStableState = HIGH;
+bool btn2LastStableState = HIGH;
+
+// Button timing constants
 const unsigned long doubleClickDelay = 400;
 const unsigned long debounceDelay = 50;
-bool lastBtn1State = HIGH;
-bool lastBtn2State = HIGH;
-unsigned long lastBtn1Press = 0;
-unsigned long lastBtn2Press = 0;
 unsigned long btn2FirstClick = 0;
 
 // Alarm values
@@ -59,6 +65,11 @@ int alarmMinuteInt = 0;
 // Temporary alarm setting variables
 int tempAlarmHour = 0;
 int tempAlarmMinute = 0;
+
+// Time display positioning
+const int TIME_Y = 45;
+const int TIME_SIZE = 3;
+int timeStartX = 0;
 
 void setup() {
   wakeTime = millis();
@@ -196,19 +207,17 @@ void goToDeepSleep() {
 
 void handleMainScreenButtons() {
   // BTN1: Toggle alarm on/off
-  if (buttonPressed(BTN1_PIN, lastBtn1State, lastBtn1Press)) {
+  if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState)) {
     alarmSet = !alarmSet;
     updateAlarmIndicator();
     tone(BUZZER_PIN, 1500, 50);
-    // Reset wake timer
     wakeTime = millis();
   }
 
   // BTN2: Enter alarm setting mode
-  if (buttonPressed(BTN2_PIN, lastBtn2State, lastBtn2Press)) {
+  if (buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
     showDailyAlarm();
     tone(BUZZER_PIN, 2000, 50);
-    // Reset wake timer
     wakeTime = millis();
   }
 }
@@ -218,7 +227,7 @@ void handleAlarmSettingButtons() {
   static unsigned long singleClickTime = 0;
 
   // BTN1: Increment hour or minute
-  if (buttonPressed(BTN1_PIN, lastBtn1State, lastBtn1Press)) {
+  if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState)) {
     btn2FirstClick = 0;
     waitingForDoubleClick = false;
 
@@ -230,14 +239,11 @@ void handleAlarmSettingButtons() {
       updateAlarmMinute(getCorrectValue(String(tempAlarmMinute)));
     }
     tone(BUZZER_PIN, 1800, 30);
-    // Reset wake timer
     wakeTime = millis();
   }
 
   // BTN2: Decrement or double-click to confirm
-  bool btn2Pressed = buttonPressed(BTN2_PIN, lastBtn2State, lastBtn2Press);
-
-  if (btn2Pressed) {
+  if (buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
     unsigned long currentTime = millis();
 
     // Check if double-click
@@ -284,7 +290,6 @@ void handleAlarmSettingButtons() {
       waitingForDoubleClick = true;
       singleClickTime = currentTime;
     }
-    // Reset wake timer
     wakeTime = millis();
   }
 
@@ -303,38 +308,76 @@ void handleAlarmSettingButtons() {
 }
 
 // Function to handle button press with debouncing
-bool buttonPressed(int pin, bool &lastState, unsigned long &lastPressTime) {
-  bool currentState = digitalRead(pin);
+bool buttonPressed(int pin, bool &lastReading, unsigned long &lastDebounceTime, bool &buttonState, bool &lastStableState) {
+  bool reading = digitalRead(pin);
+  bool pressed = false;
 
-  if (currentState == LOW && lastState == HIGH) {
-    if (millis() - lastPressTime > debounceDelay) {
-      lastPressTime = millis();
-      lastState = LOW;
-      return true;
-    }
-  } else if (currentState == HIGH && lastState == LOW) {
-    lastState = HIGH;
+  // If the reading changed reset debounce timer
+  if (reading != lastReading) {
+    lastDebounceTime = millis();
   }
 
-  return false;
+  // If enough time has passed, accept the reading as stable
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // If the stable state changed
+    if (reading != buttonState) {
+      buttonState = reading;
+
+      // Only register a press on the falling edge (HIGH to LOW)
+      if (buttonState == LOW && lastStableState == HIGH) {
+        pressed = true;
+      }
+      lastStableState = buttonState;
+    }
+  }
+
+  lastReading = reading;
+  return pressed;
+}
+
+void updateTimeDisplay(int hour, int minute, int second) {
+  String timeStr = getCorrectValue(String(hour)) + ":" + getCorrectValue(String(minute)) + ":" + getCorrectValue(String(second));
+
+  // Clear the entire time area
+  tft.fillRect(0, TIME_Y, tft.width(), 30, ST77XX_BLACK);
+
+  // Draw centered and calculate starting X position
+  tft.setTextSize(TIME_SIZE);
+  tft.setTextColor(ST77XX_WHITE);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
+  timeStartX = (tft.width() - w) / 2;
+
+  tft.setCursor(timeStartX, TIME_Y);
+  tft.print(timeStr);
 }
 
 void updateCurrentHour(int hour) {
-  tft.fillRect(0, 45, 80, 30, ST77XX_BLACK);
-  String hourStr = getCorrectValue(String(hour)) + ":";
-  drawCenteredText(hourStr, 45, 3, ST77XX_WHITE);
+  tft.fillRect(timeStartX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (HH)
+  tft.setCursor(timeStartX, TIME_Y);
+  tft.setTextSize(TIME_SIZE);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.print(getCorrectValue(String(hour)));
 }
 
 void updateCurrentMinute(int minute) {
-  tft.fillRect(80, 45, 80, 30, ST77XX_BLACK);
-  String minuteStr = getCorrectValue(String(minute)) + ":";
-  drawCenteredText(minuteStr, 45, 3, ST77XX_WHITE);
+  int minuteX = timeStartX + 54;
+  tft.fillRect(minuteX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (MM)
+  tft.setCursor(minuteX, TIME_Y);
+  tft.setTextSize(TIME_SIZE);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.print(getCorrectValue(String(minute)));
 }
 
 void updateCurrentSecond(int second) {
-  tft.fillRect(140, 45, 20, 30, ST77XX_BLACK);
-  String secondStr = getCorrectValue(String(second));
-  drawCenteredText(secondStr, 45, 3, ST77XX_WHITE);
+  int secondX = timeStartX + 108;
+  tft.fillRect(secondX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (SS)
+  tft.setCursor(secondX, TIME_Y);
+  tft.setTextSize(TIME_SIZE);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.print(getCorrectValue(String(second)));
 }
 
 void updateDateDisplay(DateTime now) {
@@ -360,8 +403,7 @@ void showMainScreen(DateTime now) {
   onMainScreen = true;
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-  String timeStr = getCorrectValue(String(now.hour())) + ":" + getCorrectValue(String(now.minute())) + ":" + getCorrectValue(String(now.second()));
-  drawCenteredText(timeStr, 45, 3, ST77XX_WHITE);
+  updateTimeDisplay(now.hour(), now.minute(), now.second());
   updateDateDisplay(now);
   updateDayDisplay(now);
 }
@@ -370,7 +412,7 @@ void showMainScreenNoRTC() {
   onMainScreen = true;
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-  drawCenteredText("00:00:00", 45, 3, ST77XX_WHITE);
+  updateTimeDisplay(0, 0, 0);
   drawCenteredText("YYYY-MM-DD", 80, 2, ST77XX_WHITE);
   drawCenteredText("Unknown", 105, 2, ST77XX_CYAN);
 }
