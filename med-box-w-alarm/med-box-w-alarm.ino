@@ -88,7 +88,7 @@ void setup() {
   // Set up screen
   tft.initR(INITR_BLACKTAB);
   tft.fillScreen(ST77XX_BLACK);
-  tft.setRotation(1);
+  tft.setRotation(3);
 
   // Set up RTC with custom I2C pins
   Wire.begin(RTC_SDA, RTC_SCL);
