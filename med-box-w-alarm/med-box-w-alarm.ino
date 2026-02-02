@@ -20,9 +20,17 @@ constexpr uint8_t RTC_SDA = 6;
 constexpr uint8_t RTC_SCL = 7;
 
 // Deep sleep
-constexpr uint32_t AWAKE_TIME_MS = 120000;      // 2 minutes (ms)
-constexpr uint32_t SLEEP_TIME_US = 1800000000;  // 30 minutes (ms)
+constexpr uint32_t AWAKE_TIME_MS = 120000;              // 2 minutes (ms)
+constexpr uint32_t DEFAULT_SLEEP_TIME_US = 1800000000;  // 30 minutes (µs)
+constexpr uint32_t MIN_SLEEP_TIME_US = 60000000;        // 1 minute minimum (µs)
+constexpr uint32_t ALARM_WAKEUP_MARGIN_MIN = 1;         // Wake up 1 minute before alarm
 unsigned long wakeTime = 0;
+
+// Wakeup reason tracking - preserved across deep sleep
+RTC_DATA_ATTR int wakeupCount = 0;
+RTC_DATA_ATTR bool wasAlarmTriggered = false;
+RTC_DATA_ATTR int lastAlarmHour = -1;
+RTC_DATA_ATTR int lastAlarmMinute = -1;
 
 // Instances
 Servo boxServo;
@@ -34,7 +42,7 @@ Preferences preferences;
 bool rtcFound = false;
 
 // Helper variables
-constexpr uint8_t BOX_OPEN_FOR = 20;  // seconds
+constexpr uint8_t BOX_OPEN_FOR = 30;  // seconds
 bool alarmSet = true;
 bool onMainScreen = true;
 bool isHourSelected = true;
@@ -58,6 +66,11 @@ const unsigned long doubleClickDelay = 400;
 const unsigned long debounceDelay = 50;
 unsigned long btn2FirstClick = 0;
 
+// Alarm sound control
+unsigned long lastBeepCycle = 0;
+int beepState = 0;
+bool alarmSoundActive = false;
+
 // Alarm values
 int alarmHourInt = 0;
 int alarmMinuteInt = 0;
@@ -66,13 +79,28 @@ int alarmMinuteInt = 0;
 int tempAlarmHour = 0;
 int tempAlarmMinute = 0;
 
-// Time display positioning
+// Time display positioning and optimization
 const int TIME_Y = 45;
 const int TIME_SIZE = 3;
-int timeStartX = 0;
+
+// Previous time values for optimization
+int prevHourTens = -1;
+int prevHourOnes = -1;
+int prevMinTens = -1;
+int prevMinOnes = -1;
+int prevSecTens = -1;
+int prevSecOnes = -1;
 
 void setup() {
   wakeTime = millis();
+
+  // Check wakeup reason FIRST
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool isGpioWakeup = (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO);
+  bool isFirstBoot = (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED);
+  bool isTimerWakeup = (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER);
+
+  wakeupCount++;
 
   // Initialize Preferences
   preferences.begin("alarm-clock", false);
@@ -80,6 +108,7 @@ void setup() {
   // Load saved alarm values
   alarmHourInt = preferences.getInt("alarmHour", 0);
   alarmMinuteInt = preferences.getInt("alarmMin", 0);
+  alarmSet = preferences.getBool("alarmSet", true);
 
   // Set up TFT backlight
   pinMode(TFT_LED, OUTPUT);
@@ -96,8 +125,17 @@ void setup() {
     rtcFound = false;
   } else {
     rtcFound = true;
-    if (rtc.lostPower()) {
-      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
+    // Check if time was already set manually
+    bool timeWasSet = preferences.getBool("timeSet", false);
+
+    if (!timeWasSet) {
+      // MANUALLY SET THE TIME HERE ONLY ONCE!
+      // Format: DateTime(year, month, day, hour, minute, second)
+      rtc.adjust(DateTime(2025, 1, 30, 15, 33, 27));
+
+      // Save flag so it doesn't reset again
+      preferences.putBool("timeSet", true);
     }
   }
 
@@ -107,23 +145,74 @@ void setup() {
   pinMode(BTN2_PIN, INPUT_PULLUP);
 
   boxServo.attach(SERVO_PIN);
-  boxServo.write(0);
 
   // Check valid alarm values
   if (alarmHourInt > 23) alarmHourInt = 0;
   if (alarmMinuteInt > 59) alarmMinuteInt = 0;
 
-  // Load main screen by default
-  if (rtcFound) {
-    showMainScreen(rtc.now());
+  // Check if we should trigger alarm
+  bool shouldTriggerAlarm = false;
+  if (rtcFound && alarmSet) {
+    DateTime now = rtc.now();
+
+    // Only trigger if:
+    // 1. We're at exact alarm time (hour and minute match)
+    // 2. This alarm hasn't been triggered yet (check against last triggered hour/minute)
+    if (now.hour() == alarmHourInt && now.minute() == alarmMinuteInt) {
+      // Check if this is a new alarm (not already triggered)
+      if (lastAlarmHour != alarmHourInt || lastAlarmMinute != alarmMinuteInt) {
+        shouldTriggerAlarm = true;
+        lastAlarmHour = alarmHourInt;
+        lastAlarmMinute = alarmMinuteInt;
+      }
+    }
+
+    // OR if wasAlarmTriggered flag was set (woke up just before alarm)
+    if (wasAlarmTriggered && now.hour() == alarmHourInt && now.minute() == alarmMinuteInt) {
+      shouldTriggerAlarm = true;
+      wasAlarmTriggered = false;
+      lastAlarmHour = alarmHourInt;
+      lastAlarmMinute = alarmMinuteInt;
+    }
+
+    showMainScreen(now);
   } else {
     showMainScreenNoRTC();
   }
 
-  // Startup beep
-  tone(BUZZER_PIN, 2000, 100);
-  delay(150);
-  tone(BUZZER_PIN, 2500, 100);
+  // Handle wakeup scenarios
+  if (shouldTriggerAlarm) {
+    // Alarm time - trigger alarm
+    triggerAlarm();
+    tone(BUZZER_PIN, 2000, 100);
+    delay(150);
+    tone(BUZZER_PIN, 2500, 100);
+  } else if (isGpioWakeup) {
+    // GPIO wakeup (button press) - skip servo test, just beep
+    tone(BUZZER_PIN, 2000, 100);
+    delay(150);
+    tone(BUZZER_PIN, 2500, 100);
+    boxServo.write(0);  // Ensure closed position
+  } else if (isTimerWakeup) {
+    // Timer wakeup - quick beep only
+    tone(BUZZER_PIN, 1500, 50);
+    boxServo.write(0);  // Ensure closed position
+  } else {
+    // First boot - full startup sequence with servo test
+    tone(BUZZER_PIN, 2000, 100);
+    delay(150);
+    tone(BUZZER_PIN, 2500, 100);
+
+    // Servo test cycle (only on first boot)
+    boxServo.write(0);
+    for (int i = 0; i < 5; i++) {
+      boxServo.write(0);
+      delay(1000);
+      boxServo.write(180);
+      delay(1000);
+    }
+    boxServo.write(0);
+  }
 }
 
 void loop() {
@@ -153,36 +242,48 @@ void loop() {
     int currentMinute = now.minute();
     int currentSecond = now.second();
 
+    // OPTIMIZED: Only update changed digits
+    if (currentHour != lastHour || currentMinute != lastMinute || currentSecond != lastSecond) {
+      updateTimeDisplayOptimized(currentHour, currentMinute, currentSecond);
+      lastHour = currentHour;
+      lastMinute = currentMinute;
+      lastSecond = currentSecond;
+    }
+
     if (alarmSet) {
+      // Reset the alarm if time has passed the alarm time
       if (currentHour != alarmHourInt || currentMinute != alarmMinuteInt) {
         alarmStoppedForCurrentTime = false;
       }
 
+      // Reset last alarm tracking at midnight for next day's alarm
+      if (currentHour == 0 && currentMinute == 0 && currentSecond == 0) {
+        lastAlarmHour = -1;
+        lastAlarmMinute = -1;
+      }
+
+      // Check if it's alarm time
       if (currentHour == alarmHourInt && currentMinute == alarmMinuteInt && currentSecond == 0 && !alarmStoppedForCurrentTime) {
         triggerAlarm();
         alarmStoppedForCurrentTime = true;
+        lastAlarmHour = alarmHourInt;
+        lastAlarmMinute = alarmMinuteInt;
       }
 
+      // Stop alarm after 30 seconds if box closed
       if (boxOpen && millis() - boxOpenStartTime >= BOX_OPEN_FOR * 1000) {
         boxServo.write(0);  // Close the box
         boxOpen = false;
         alarmActive = false;
+        alarmSoundActive = false;
+        noTone(BUZZER_PIN);
       }
     }
+  }
 
-    // Update only changed values
-    if (currentSecond != lastSecond) {
-      lastSecond = currentSecond;
-      updateCurrentSecond(currentSecond);
-    }
-    if (currentMinute != lastMinute) {
-      lastMinute = currentMinute;
-      updateCurrentMinute(currentMinute);
-    }
-    if (currentHour != lastHour) {
-      lastHour = currentHour;
-      updateCurrentHour(currentHour);
-    }
+  // If alarm active, continue beeping
+  if (alarmActive && alarmSoundActive) {
+    handleAlarmSound();
   }
 
   if (onMainScreen) {
@@ -197,18 +298,81 @@ void goToDeepSleep() {
   tft.enableSleep(true);
   boxServo.detach();
 
-  // Timer wakeup
-  esp_sleep_enable_timer_wakeup(SLEEP_TIME_US);
+  // Calculate sleep time based on alarm
+  uint64_t sleepTime = DEFAULT_SLEEP_TIME_US;  // default 30 minutes
 
-  // Button wakeup
-  esp_deep_sleep_enable_gpio_wakeup(1 << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+  if (alarmSet && rtcFound) {
+    DateTime now = rtc.now();
+
+    // Calculate current time in minutes since midnight
+    int currentTotalMinutes = now.hour() * 60 + now.minute();
+
+    // Calculate alarm time in minutes since midnight
+    int alarmTotalMinutes = alarmHourInt * 60 + alarmMinuteInt;
+
+    // Calculate minutes until alarm
+    int minutesUntilAlarm = alarmTotalMinutes - currentTotalMinutes;
+
+    // If alarm is tomorrow (negative value), add 24 hours
+    if (minutesUntilAlarm <= 0) {
+      minutesUntilAlarm += 24 * 60;
+    }
+
+    // If alarm is within 30 minutes, wake up earlier to ensure we don't miss it
+    if (minutesUntilAlarm <= 30) {
+      // Wake up ALARM_WAKEUP_MARGIN_MIN minutes before the alarm
+      int wakeupMinutes = minutesUntilAlarm - ALARM_WAKEUP_MARGIN_MIN;
+      if (wakeupMinutes < 1) wakeupMinutes = 1;  // At least 1 minute
+
+      sleepTime = (uint64_t)wakeupMinutes * 60 * 1000000ULL;  // Convert to microseconds
+
+      // Set flag so we know to check for alarm on wakeup
+      wasAlarmTriggered = true;
+    } else {
+      // More than 30 minutes until alarm, use default sleep time
+      wasAlarmTriggered = false;
+    }
+
+    // Ensure minimum sleep time
+    if (sleepTime < MIN_SLEEP_TIME_US) {
+      sleepTime = MIN_SLEEP_TIME_US;
+    }
+  }
+
+  // Timer wakeup
+  esp_sleep_enable_timer_wakeup(sleepTime);
+
+  // Button wakeup (BTN1) - using GPIO wakeup for ESP32-C3
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+
   esp_deep_sleep_start();
 }
 
 void handleMainScreenButtons() {
+  // If alarm active, button press stops it
+  if (alarmActive) {
+    if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState) || buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
+
+      boxServo.write(0);
+      boxOpen = false;
+      alarmActive = false;
+      alarmSoundActive = false;
+      alarmStoppedForCurrentTime = true;
+      wasAlarmTriggered = false;  // Clear the flag
+      // Keep lastAlarmHour and lastAlarmMinute so it doesn't trigger again today
+      noTone(BUZZER_PIN);
+      beepState = 0;
+      tone(BUZZER_PIN, 1000, 200);  // Confirmation beep
+      wakeTime = millis();
+      return;
+    }
+  }
+
+  // Normal operation
   // BTN1: Toggle alarm on/off
   if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState)) {
     alarmSet = !alarmSet;
+    preferences.putBool("alarmSet", alarmSet);  // Save alarm state
     updateAlarmIndicator();
     tone(BUZZER_PIN, 1500, 50);
     wakeTime = millis();
@@ -246,22 +410,27 @@ void handleAlarmSettingButtons() {
   if (buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
     unsigned long currentTime = millis();
 
-    // Check if double-click
     if (waitingForDoubleClick && (currentTime - singleClickTime < doubleClickDelay)) {
+      // Double-click detected
       waitingForDoubleClick = false;
-      btn2FirstClick = 0;
 
       if (isHourSelected) {
+        // Confirm hour, move to minute
         preferences.putInt("alarmHour", tempAlarmHour);
         alarmHourInt = tempAlarmHour;
         isHourSelected = false;
 
-        // Unhighlight hour, highlight minute
-        tft.fillRect(34, 49, 40, 23, ST77XX_BLACK);
         tft.setCursor(35, 50);
         tft.setTextSize(3);
         tft.setTextColor(ST77XX_WHITE);
+        tft.fillRect(34, 49, 40, 23, ST77XX_BLACK);
         tft.print(getCorrectValue(String(tempAlarmHour)));
+
+        tft.setCursor(85, 50);
+        tft.setTextSize(3);
+        tft.setTextColor(ST77XX_GREEN);
+        tft.fillRect(81, 49, 41, 23, ST77XX_BLACK);
+        tft.print(getCorrectValue(String(tempAlarmMinute)));
 
         tone(BUZZER_PIN, 2500, 100);
         delay(100);
@@ -272,6 +441,10 @@ void handleAlarmSettingButtons() {
         alarmMinuteInt = tempAlarmMinute;
         onMainScreen = true;
         isHourSelected = true;
+
+        // Reset last alarm tracking since we set a new alarm
+        lastAlarmHour = -1;
+        lastAlarmMinute = -1;
 
         if (rtcFound) {
           showMainScreen(rtc.now());
@@ -335,49 +508,97 @@ bool buttonPressed(int pin, bool &lastReading, unsigned long &lastDebounceTime, 
   return pressed;
 }
 
-void updateTimeDisplay(int hour, int minute, int second) {
-  String timeStr = getCorrectValue(String(hour)) + ":" + getCorrectValue(String(minute)) + ":" + getCorrectValue(String(second));
+// OPTIMIZED: Only redraw changed digits
+void updateTimeDisplayOptimized(int hour, int minute, int second) {
+  int hourTens = hour / 10;
+  int hourOnes = hour % 10;
+  int minTens = minute / 10;
+  int minOnes = minute % 10;
+  int secTens = second / 10;
+  int secOnes = second % 10;
 
-  // Clear the entire time area
-  tft.fillRect(0, TIME_Y, tft.width(), 30, ST77XX_BLACK);
-
-  // Draw centered and calculate starting X position
   tft.setTextSize(TIME_SIZE);
   tft.setTextColor(ST77XX_WHITE);
 
+  // Get actual character dimensions
   int16_t x1, y1;
-  uint16_t w, h;
-  tft.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
-  timeStartX = (tft.width() - w) / 2;
+  uint16_t charW, charH;
+  tft.getTextBounds("0", 0, 0, &x1, &y1, &charW, &charH);
 
-  tft.setCursor(timeStartX, TIME_Y);
-  tft.print(timeStr);
-}
+  uint16_t colonW;
+  tft.getTextBounds(":", 0, 0, &x1, &y1, &colonW, &charH);
 
-void updateCurrentHour(int hour) {
-  tft.fillRect(timeStartX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (HH)
-  tft.setCursor(timeStartX, TIME_Y);
-  tft.setTextSize(TIME_SIZE);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print(getCorrectValue(String(hour)));
-}
+  // Calculate total width and starting position
+  String fullTime = getCorrectValue(String(hour)) + ":" + getCorrectValue(String(minute)) + ":" + getCorrectValue(String(second));
+  uint16_t totalW, totalH;
+  tft.getTextBounds(fullTime, 0, 0, &x1, &y1, &totalW, &totalH);
+  int baseX = (tft.width() - totalW) / 2;
 
-void updateCurrentMinute(int minute) {
-  int minuteX = timeStartX + 54;
-  tft.fillRect(minuteX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (MM)
-  tft.setCursor(minuteX, TIME_Y);
-  tft.setTextSize(TIME_SIZE);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print(getCorrectValue(String(minute)));
-}
+  // Calculate positions for each element
+  int pos = baseX;
 
-void updateCurrentSecond(int second) {
-  int secondX = timeStartX + 108;
-  tft.fillRect(secondX, TIME_Y, 36, 24, ST77XX_BLACK);  // Clear 2 digits (SS)
-  tft.setCursor(secondX, TIME_Y);
-  tft.setTextSize(TIME_SIZE);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print(getCorrectValue(String(second)));
+  // Hour tens
+  if (hourTens != prevHourTens) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(hourTens);
+    prevHourTens = hourTens;
+  }
+  pos += charW;
+
+  // Hour ones
+  if (hourOnes != prevHourOnes) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(hourOnes);
+    prevHourOnes = hourOnes;
+  }
+  pos += charW;
+
+  // Colon 1
+  tft.setCursor(pos, TIME_Y);
+  tft.print(":");
+  pos += colonW;
+
+  // Minute tens
+  if (minTens != prevMinTens) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(minTens);
+    prevMinTens = minTens;
+  }
+  pos += charW;
+
+  // Minute ones
+  if (minOnes != prevMinOnes) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(minOnes);
+    prevMinOnes = minOnes;
+  }
+  pos += charW;
+
+  // Colon 2
+  tft.setCursor(pos, TIME_Y);
+  tft.print(":");
+  pos += colonW;
+
+  // Second tens
+  if (secTens != prevSecTens) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(secTens);
+    prevSecTens = secTens;
+  }
+  pos += charW;
+
+  // Second ones
+  if (secOnes != prevSecOnes) {
+    tft.fillRect(pos - 1, TIME_Y - 1, charW + 2, charH + 2, ST77XX_BLACK);
+    tft.setCursor(pos, TIME_Y);
+    tft.print(secOnes);
+    prevSecOnes = secOnes;
+  }
 }
 
 void updateDateDisplay(DateTime now) {
@@ -403,7 +624,19 @@ void showMainScreen(DateTime now) {
   onMainScreen = true;
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-  updateTimeDisplay(now.hour(), now.minute(), now.second());
+
+  // Reset previous values to force full redraw
+  prevHourTens = -1;
+  prevHourOnes = -1;
+  prevMinTens = -1;
+  prevMinOnes = -1;
+  prevSecTens = -1;
+  prevSecOnes = -1;
+
+  // Clear the entire time display area to prevent overlapping
+  tft.fillRect(0, TIME_Y - 2, tft.width(), 30, ST77XX_BLACK);
+
+  updateTimeDisplayOptimized(now.hour(), now.minute(), now.second());
   updateDateDisplay(now);
   updateDayDisplay(now);
 }
@@ -412,7 +645,19 @@ void showMainScreenNoRTC() {
   onMainScreen = true;
   tft.fillScreen(ST77XX_BLACK);
   updateAlarmIndicator();
-  updateTimeDisplay(0, 0, 0);
+
+  // Reset previous values
+  prevHourTens = -1;
+  prevHourOnes = -1;
+  prevMinTens = -1;
+  prevMinOnes = -1;
+  prevSecTens = -1;
+  prevSecOnes = -1;
+
+  // Clear the entire time display area to prevent overlapping
+  tft.fillRect(0, TIME_Y - 2, tft.width(), 30, ST77XX_BLACK);
+
+  updateTimeDisplayOptimized(0, 0, 0);
   drawCenteredText("YYYY-MM-DD", 80, 2, ST77XX_WHITE);
   drawCenteredText("Unknown", 105, 2, ST77XX_CYAN);
 }
@@ -421,38 +666,78 @@ String getCorrectValue(String timePart) {
   return timePart.length() < 2 ? "0" + timePart : timePart;
 }
 
-// Alarm sound function
-void triggerAlarm() {
-  static unsigned long lastCycle = 0;
-  static int beepStep = 0;
+void handleAlarmSound() {
   unsigned long now = millis();
 
+  switch (beepState) {
+    case 0:  // First beep
+      if (now - lastBeepCycle >= 200) {
+        tone(BUZZER_PIN, 3700);
+        lastBeepCycle = now;
+        beepState = 1;
+      }
+      break;
+
+    case 1:  // Pause after first beep
+      if (now - lastBeepCycle >= 200) {
+        noTone(BUZZER_PIN);
+        lastBeepCycle = now;
+        beepState = 2;
+      }
+      break;
+
+    case 2:  // Second beep
+      if (now - lastBeepCycle >= 200) {
+        tone(BUZZER_PIN, 3700);
+        lastBeepCycle = now;
+        beepState = 3;
+      }
+      break;
+
+    case 3:  // Pause after second beep
+      if (now - lastBeepCycle >= 200) {
+        noTone(BUZZER_PIN);
+        lastBeepCycle = now;
+        beepState = 4;
+      }
+      break;
+
+    case 4:  // Third beep
+      if (now - lastBeepCycle >= 200) {
+        tone(BUZZER_PIN, 3700);
+        lastBeepCycle = now;
+        beepState = 5;
+      }
+      break;
+
+    case 5:  // Pause after third beep
+      if (now - lastBeepCycle >= 200) {
+        noTone(BUZZER_PIN);
+        lastBeepCycle = now;
+        beepState = 6;
+      }
+      break;
+
+    case 6:  // 5 second silence
+      noTone(BUZZER_PIN);
+      if (now - lastBeepCycle >= 5000) {
+        lastBeepCycle = now;
+        beepState = 0;  // Restart cycle
+      }
+      break;
+  }
+}
+
+void triggerAlarm() {
   alarmActive = true;
+  alarmSoundActive = true;
+  beepState = 0;
+  lastBeepCycle = millis();
 
   if (!boxOpen) {
-    boxServo.write(90);
+    boxServo.write(180);
     boxOpen = true;
     boxOpenStartTime = millis();
-  }
-
-  if (beepStep < 6) {
-    if (now - lastCycle >= 150) {
-      lastCycle = now;
-
-      if (beepStep % 2 == 0) {
-        tone(BUZZER_PIN, 3700);
-      } else {
-        noTone(BUZZER_PIN);
-      }
-
-      beepStep++;
-    }
-  } else {
-    noTone(BUZZER_PIN);
-    if (now - lastCycle >= 2000) {
-      beepStep = 0;
-      lastCycle = now;
-    }
   }
 }
 
