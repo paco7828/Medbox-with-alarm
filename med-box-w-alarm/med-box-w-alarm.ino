@@ -20,10 +20,9 @@ constexpr uint8_t RTC_SDA = 6;
 constexpr uint8_t RTC_SCL = 7;
 
 // Deep sleep
-constexpr uint32_t AWAKE_TIME_MS = 120000;              // 2 minutes (ms)
-constexpr uint32_t DEFAULT_SLEEP_TIME_US = 1800000000;  // 30 minutes (µs)
-constexpr uint32_t MIN_SLEEP_TIME_US = 60000000;        // 1 minute minimum (µs)
-constexpr uint32_t ALARM_WAKEUP_MARGIN_MIN = 1;         // Wake up 1 minute before alarm
+constexpr uint32_t AWAKE_TIME_MS = 120000;        // 2 minutes (ms)
+constexpr uint32_t MIN_SLEEP_TIME_US = 60000000;  // 1 minute minimum (µs)
+constexpr uint32_t ALARM_WAKEUP_MARGIN_MIN = 1;   // Wake up 1 minute before alarm
 unsigned long wakeTime = 0;
 
 // Wakeup reason tracking - preserved across deep sleep
@@ -188,13 +187,13 @@ void setup() {
     delay(150);
     tone(BUZZER_PIN, 2500, 100);
   } else if (isGpioWakeup) {
-    // GPIO wakeup (button press) - skip servo test, just beep
+    // GPIO wakeup (button press) - just beep
     tone(BUZZER_PIN, 2000, 100);
     delay(150);
     tone(BUZZER_PIN, 2500, 100);
     boxServo.write(0);  // Ensure closed position
   } else if (isTimerWakeup) {
-    // Timer wakeup - quick beep only
+    // Timer wakeup means we're near alarm time - quick beep only
     tone(BUZZER_PIN, 1500, 50);
     boxServo.write(0);  // Ensure closed position
   } else {
@@ -298,52 +297,37 @@ void goToDeepSleep() {
   tft.enableSleep(true);
   boxServo.detach();
 
-  // Calculate sleep time based on alarm
-  uint64_t sleepTime = DEFAULT_SLEEP_TIME_US;  // default 30 minutes
+  // GPIO wakeup on button press — always enabled
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 
+  // Timer wakeup only when an alarm is scheduled
+  // Sleeps until (alarm time - ALARM_WAKEUP_MARGIN_MIN), no periodic wakeup otherwise
   if (alarmSet && rtcFound) {
     DateTime now = rtc.now();
 
-    // Calculate current time in minutes since midnight
     int currentTotalMinutes = now.hour() * 60 + now.minute();
-
-    // Calculate alarm time in minutes since midnight
     int alarmTotalMinutes = alarmHourInt * 60 + alarmMinuteInt;
 
-    // Calculate minutes until alarm
     int minutesUntilAlarm = alarmTotalMinutes - currentTotalMinutes;
-
-    // If alarm is tomorrow (negative value), add 24 hours
     if (minutesUntilAlarm <= 0) {
-      minutesUntilAlarm += 24 * 60;
+      minutesUntilAlarm += 24 * 60;  // Alarm is tomorrow
     }
 
-    // If alarm is within 30 minutes, wake up earlier to ensure we don't miss it
-    if (minutesUntilAlarm <= 30) {
-      // Wake up ALARM_WAKEUP_MARGIN_MIN minutes before the alarm
-      int wakeupMinutes = minutesUntilAlarm - ALARM_WAKEUP_MARGIN_MIN;
-      if (wakeupMinutes < 1) wakeupMinutes = 1;  // At least 1 minute
+    // Subtract margin so we wake up slightly before the alarm
+    int wakeupMinutes = minutesUntilAlarm - ALARM_WAKEUP_MARGIN_MIN;
+    if (wakeupMinutes < 1) wakeupMinutes = 1;  // Never sleep less than 1 minute
 
-      sleepTime = (uint64_t)wakeupMinutes * 60 * 1000000ULL;  // Convert to microseconds
+    uint64_t sleepTime = (uint64_t)wakeupMinutes * 60 * 1000000ULL;
 
-      // Set flag so we know to check for alarm on wakeup
-      wasAlarmTriggered = true;
-    } else {
-      // More than 30 minutes until alarm, use default sleep time
-      wasAlarmTriggered = false;
-    }
-
-    // Ensure minimum sleep time
+    // Enforce absolute minimum sleep time
     if (sleepTime < MIN_SLEEP_TIME_US) {
       sleepTime = MIN_SLEEP_TIME_US;
     }
+
+    wasAlarmTriggered = true;
+    esp_sleep_enable_timer_wakeup(sleepTime);
   }
-
-  // Timer wakeup
-  esp_sleep_enable_timer_wakeup(sleepTime);
-
-  // Button wakeup (BTN1) - using GPIO wakeup for ESP32-C3
-  esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+  // No alarm set → no timer registered, device sleeps until button press only
 
   esp_deep_sleep_start();
 }
