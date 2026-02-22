@@ -201,16 +201,6 @@ void setup() {
     tone(BUZZER_PIN, 2000, 100);
     delay(150);
     tone(BUZZER_PIN, 2500, 100);
-
-    // Servo test cycle (only on first boot)
-    boxServo.write(0);
-    for (int i = 0; i < 5; i++) {
-      boxServo.write(0);
-      delay(1000);
-      boxServo.write(180);
-      delay(1000);
-    }
-    boxServo.write(0);
   }
 }
 
