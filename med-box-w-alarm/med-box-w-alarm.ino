@@ -20,14 +20,11 @@ constexpr uint8_t RTC_SDA = 6;
 constexpr uint8_t RTC_SCL = 7;
 
 // Deep sleep
-constexpr uint32_t AWAKE_TIME_MS = 120000;        // 2 minutes (ms)
-constexpr uint32_t MIN_SLEEP_TIME_US = 60000000;  // 1 minute minimum (µs)
-constexpr uint32_t ALARM_WAKEUP_MARGIN_MIN = 1;   // Wake up 1 minute before alarm
+constexpr uint32_t AWAKE_TIME_MS = 60000;         // 1 minute (ms)
+constexpr uint32_t MIN_SLEEP_TIME_US = 30000000;  // 30 seconds (µs)
 unsigned long wakeTime = 0;
 
 // Wakeup reason tracking - preserved across deep sleep
-RTC_DATA_ATTR int wakeupCount = 0;
-RTC_DATA_ATTR bool wasAlarmTriggered = false;
 RTC_DATA_ATTR int lastAlarmHour = -1;
 RTC_DATA_ATTR int lastAlarmMinute = -1;
 
@@ -99,8 +96,6 @@ void setup() {
   bool isFirstBoot = (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED);
   bool isTimerWakeup = (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER);
 
-  wakeupCount++;
-
   // Initialize Preferences
   preferences.begin("alarm-clock", false);
 
@@ -164,14 +159,6 @@ void setup() {
         lastAlarmHour = alarmHourInt;
         lastAlarmMinute = alarmMinuteInt;
       }
-    }
-
-    // OR if wasAlarmTriggered flag was set (woke up just before alarm)
-    if (wasAlarmTriggered && now.hour() == alarmHourInt && now.minute() == alarmMinuteInt) {
-      shouldTriggerAlarm = true;
-      wasAlarmTriggered = false;
-      lastAlarmHour = alarmHourInt;
-      lastAlarmMinute = alarmMinuteInt;
     }
 
     showMainScreen(now);
@@ -295,26 +282,19 @@ void goToDeepSleep() {
   if (alarmSet && rtcFound) {
     DateTime now = rtc.now();
 
-    int currentTotalMinutes = now.hour() * 60 + now.minute();
-    int alarmTotalMinutes = alarmHourInt * 60 + alarmMinuteInt;
+    long currentTotalSec = (long)now.hour() * 3600 + now.minute() * 60 + now.second();
+    long alarmTotalSec = (long)alarmHourInt * 3600 + alarmMinuteInt * 60;
 
-    int minutesUntilAlarm = alarmTotalMinutes - currentTotalMinutes;
-    if (minutesUntilAlarm <= 0) {
-      minutesUntilAlarm += 24 * 60;  // Alarm is tomorrow
+    long secondsUntilAlarm = alarmTotalSec - currentTotalSec;
+    if (secondsUntilAlarm <= 0) {
+      secondsUntilAlarm += 24L * 3600;
     }
 
-    // Subtract margin so we wake up slightly before the alarm
-    int wakeupMinutes = minutesUntilAlarm - ALARM_WAKEUP_MARGIN_MIN;
-    if (wakeupMinutes < 1) wakeupMinutes = 1;  // Never sleep less than 1 minute
-
-    uint64_t sleepTime = (uint64_t)wakeupMinutes * 60 * 1000000ULL;
-
-    // Enforce absolute minimum sleep time
+    uint64_t sleepTime = (uint64_t)secondsUntilAlarm * 1000000ULL;
     if (sleepTime < MIN_SLEEP_TIME_US) {
       sleepTime = MIN_SLEEP_TIME_US;
     }
 
-    wasAlarmTriggered = true;
     esp_sleep_enable_timer_wakeup(sleepTime);
   }
   // No alarm set → no timer registered, device sleeps until button press only
@@ -332,7 +312,6 @@ void handleMainScreenButtons() {
       alarmActive = false;
       alarmSoundActive = false;
       alarmStoppedForCurrentTime = true;
-      wasAlarmTriggered = false;  // Clear the flag
       // Keep lastAlarmHour and lastAlarmMinute so it doesn't trigger again today
       noTone(BUZZER_PIN);
       beepState = 0;
