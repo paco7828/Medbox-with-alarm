@@ -57,6 +57,13 @@ bool btn2State = HIGH;
 bool btn1LastStableState = HIGH;
 bool btn2LastStableState = HIGH;
 
+// BTN1 hold detection
+const unsigned long HOLD_THRESHOLD_MS = 3000;  // 3 seconds to trigger hold
+unsigned long btn1PressStartTime = 0;
+bool btn1IsPhysicallyHeld = false;
+bool btn1HoldActionFired = false;
+bool manualBoxOpen = false;  // Box opened manually (separate from alarm)
+
 // Button timing constants
 const unsigned long doubleClickDelay = 400;
 const unsigned long debounceDelay = 50;
@@ -270,6 +277,12 @@ void loop() {
 }
 
 void goToDeepSleep() {
+  // Don't sleep if the box is manually held open
+  if (manualBoxOpen) {
+    wakeTime = millis();  // Reset the sleep timer, keep running
+    return;
+  }
+
   digitalWrite(TFT_LED, LOW);
   tft.enableSleep(true);
   boxServo.detach();
@@ -278,7 +291,6 @@ void goToDeepSleep() {
   esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN1_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 
   // Timer wakeup only when an alarm is scheduled
-  // Sleeps until (alarm time - ALARM_WAKEUP_MARGIN_MIN), no periodic wakeup otherwise
   if (alarmSet && rtcFound) {
     DateTime now = rtc.now();
 
@@ -297,41 +309,87 @@ void goToDeepSleep() {
 
     esp_sleep_enable_timer_wakeup(sleepTime);
   }
-  // No alarm set → no timer registered, device sleeps until button press only
 
   esp_deep_sleep_start();
 }
 
 void handleMainScreenButtons() {
-  // If alarm active, button press stops it
-  if (alarmActive) {
-    if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState) || buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
+  // ── BTN1 hold detection (raw read, no debounce needed for timing) ──────
+  bool btn1Raw = (digitalRead(BTN1_PIN) == LOW);
 
+  if (btn1Raw && !btn1IsPhysicallyHeld) {
+    // Button just went down — start timing
+    btn1IsPhysicallyHeld = true;
+    btn1PressStartTime = millis();
+    btn1HoldActionFired = false;
+  }
+
+  if (btn1IsPhysicallyHeld && !btn1HoldActionFired) {
+    if (millis() - btn1PressStartTime >= HOLD_THRESHOLD_MS) {
+      // ── HOLD action: toggle box manually ────────────────────────────
+      btn1HoldActionFired = true;
+      wakeTime = millis();  // Prevent sleep immediately
+
+      if (!manualBoxOpen) {
+        // Open the box
+        boxServo.write(180);
+        manualBoxOpen = true;
+        tone(BUZZER_PIN, 2500, 60);
+        delay(80);
+        tone(BUZZER_PIN, 3000, 60);
+      } else {
+        // Close the box
+        boxServo.write(0);
+        manualBoxOpen = false;
+        tone(BUZZER_PIN, 3000, 60);
+        delay(80);
+        tone(BUZZER_PIN, 2500, 60);
+      }
+    }
+  }
+
+  if (!btn1Raw && btn1IsPhysicallyHeld) {
+    // Button released
+    bool wasShortPress = !btn1HoldActionFired;
+    btn1IsPhysicallyHeld = false;
+
+    if (wasShortPress) {
+      // ── SHORT PRESS: stop alarm OR toggle alarm on/off ───────────────
+      if (alarmActive) {
+        boxServo.write(0);
+        boxOpen = false;
+        alarmActive = false;
+        alarmSoundActive = false;
+        alarmStoppedForCurrentTime = true;
+        noTone(BUZZER_PIN);
+        beepState = 0;
+        tone(BUZZER_PIN, 1000, 200);
+      } else {
+        alarmSet = !alarmSet;
+        preferences.putBool("alarmSet", alarmSet);
+        updateAlarmIndicator();
+        tone(BUZZER_PIN, 1500, 50);
+      }
+      wakeTime = millis();
+    }
+  }
+
+  // ── BTN2: stop alarm OR enter alarm setting mode ──────────────────────
+  if (alarmActive) {
+    if (buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
       boxServo.write(0);
       boxOpen = false;
       alarmActive = false;
       alarmSoundActive = false;
       alarmStoppedForCurrentTime = true;
-      // Keep lastAlarmHour and lastAlarmMinute so it doesn't trigger again today
       noTone(BUZZER_PIN);
       beepState = 0;
-      tone(BUZZER_PIN, 1000, 200);  // Confirmation beep
+      tone(BUZZER_PIN, 1000, 200);
       wakeTime = millis();
       return;
     }
   }
 
-  // Normal operation
-  // BTN1: Toggle alarm on/off
-  if (buttonPressed(BTN1_PIN, btn1LastReading, btn1LastDebounceTime, btn1State, btn1LastStableState)) {
-    alarmSet = !alarmSet;
-    preferences.putBool("alarmSet", alarmSet);  // Save alarm state
-    updateAlarmIndicator();
-    tone(BUZZER_PIN, 1500, 50);
-    wakeTime = millis();
-  }
-
-  // BTN2: Enter alarm setting mode
   if (buttonPressed(BTN2_PIN, btn2LastReading, btn2LastDebounceTime, btn2State, btn2LastStableState)) {
     showDailyAlarm();
     tone(BUZZER_PIN, 2000, 50);
